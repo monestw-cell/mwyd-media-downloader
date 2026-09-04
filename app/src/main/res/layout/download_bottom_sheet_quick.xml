@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/colorSurface"
+    android:maxHeight="650dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="12dp"
+        android:paddingBottom="24dp">
+
+        <!-- Top Drag Handle -->
+        <View
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="14dp"
+            android:background="@drawable/rounded_corner"
+            android:backgroundTint="?attr/colorOutlineVariant" />
+
+        <!-- Title section -->
+        <TextView
+            android:id="@+id/quick_dialog_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="تنزيل الفيديو باسم"
+            android:textSize="19sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="?attr/colorOnSurface" />
+
+        <TextView
+            android:id="@+id/quick_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="?attr/colorOnSurface"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginTop="8dp"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/quick_subtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginTop="2dp"
+            android:maxLines="1"
+            android:gravity="center" />
+
+        <!-- Loading indicator -->
+        <ProgressBar
+            android:id="@+id/quick_loading"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_gravity="center"
+            android:layout_marginVertical="16dp"
+            android:visibility="gone" />
+
+        <!-- Section 1: Music / Audio -->
+        <TextView
+            android:id="@+id/quick_section_audio"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="6dp"
+            android:text="الموسيقى"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:gravity="end" />
+
+        <LinearLayout
+            android:id="@+id/quick_audio_options_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Section 2: Video -->
+        <TextView
+            android:id="@+id/quick_section_video"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="6dp"
+            android:text="فيديو"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:gravity="end" />
+
+        <LinearLayout
+            android:id="@+id/quick_video_options_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="8dp"
+            android:background="?attr/colorOutlineVariant"
+            android:alpha="0.4" />
+
+        <!-- More formats row -->
+        <LinearLayout
+            android:id="@+id/quick_more_options"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground">
+
+            <ImageView
+                android:id="@+id/quick_more_arrow"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_back"
+                app:tint="?attr/colorOnSurfaceVariant"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:id="@+id/quick_more_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="الكل"
+                android:textSize="13sp"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:layout_marginStart="8dp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:id="@+id/quick_more_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="المزيد من التنسيقات"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="?attr/colorOnSurface" />
+
+        </LinearLayout>
+
+        <!-- Custom Media Options: Cut, Subtitles, Dubbing / Audio Language -->
+        <LinearLayout
+            android:id="@+id/quick_custom_options_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="4dp">
+
+            <!-- Cut / Trim Button -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/quick_btn_cut"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutlineVariant"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingHorizontal="6dp">
+
+                    <ImageView
+                        android:id="@+id/quick_cut_icon"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@drawable/ic_crop"
+                        app:tint="?attr/colorPrimary"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/quick_cut_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="القص"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"
+                        android:maxLines="1" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Subtitles Button -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/quick_btn_subs"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginHorizontal="2dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutlineVariant"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingHorizontal="6dp">
+
+                    <ImageView
+                        android:id="@+id/quick_subs_icon"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@drawable/ic_translate"
+                        app:tint="?attr/colorPrimary"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/quick_subs_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="الترجمة"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"
+                        android:maxLines="1" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Dubbing / Audio Track Button -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/quick_btn_dubbing"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutlineVariant"
+                app:cardBackgroundColor="?attr/colorSurfaceVariant">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:paddingHorizontal="6dp">
+
+                    <ImageView
+                        android:id="@+id/quick_dubbing_icon"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@drawable/ic_music"
+                        app:tint="?attr/colorPrimary"
+                        android:contentDescription="@null" />
+
+                    <TextView
+                        android:id="@+id/quick_dubbing_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="الدبلجة"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:textColor="?attr/colorOnSurface"
+                        android:maxLines="1" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+        <!-- Prominent Download Button -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/quick_download_btn"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="14dp"
+            android:text="بدء التنزيل"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            app:cornerRadius="27dp"
+            app:backgroundTint="?attr/colorSecondary"
+            android:textColor="?attr/colorOnSecondary" />
+
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android" android:theme="@style/BaseTheme">
+
+    <item android:title="@string/nav_dashboard"
+        android:icon="@drawable/baseline_home_filled_24"
+        android:id="@+id/homeFragment"/>
+
+    <item android:title="@string/nav_library"
+        android:icon="@drawable/ic_downloads"
+        android:id="@+id/historyFragment"/>
+
+    <item android:title="@string/nav_tools"
+        android:icon="@drawable/ic_settings"
+        android:id="@+id/moreFragment"/>
+
+    <item android:title="@string/queue"
+        android:icon="@drawable/baseline_downloading_24"
+        android:visible="false"
+        android:id="@+id/downloadQueueMainFragment"/>
+
+    <item android:title="@string/terminal"
+        android:icon="@drawable/ic_terminal"
+        android:visible="false"
+        android:id="@+id/terminalActivity"/>
+</menu>

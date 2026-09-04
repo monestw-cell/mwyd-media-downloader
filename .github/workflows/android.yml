@@ -1,0 +1,46 @@
+name: Android CI
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+        cache: 'gradle'
+
+    - name: Create local.properties
+      run: touch local.properties
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug --no-daemon
+
+    - name: Find Built APK
+      run: |
+        APK_PATH=$(find app/build/outputs/apk/ -name "*.apk" | head -n 1)
+        echo "Found APK: $APK_PATH"
+        echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
+
+    - name: Upload Artifact Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: mwyd-downloader-apk
+        path: ${{ env.APK_PATH }}
+        if-no-files-found: error
+        retention-days: 7

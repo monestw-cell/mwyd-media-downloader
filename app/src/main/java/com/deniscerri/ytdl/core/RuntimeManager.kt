@@ -1,0 +1,412 @@
+package com.deniscerri.ytdl.core
+
+import android.content.Context
+import android.os.Build
+import com.deniscerri.ytdl.R
+import com.deniscerri.ytdl.core.models.ExecuteException
+import com.deniscerri.ytdl.core.models.ExecuteResponse
+import com.deniscerri.ytdl.core.models.YTDLRequest
+import com.deniscerri.ytdl.core.packages.Aria2c
+import com.deniscerri.ytdl.core.packages.Deno
+import com.deniscerri.ytdl.core.packages.FFmpeg
+import com.deniscerri.ytdl.core.packages.NodeJS
+import com.deniscerri.ytdl.core.packages.PackageBase
+import com.deniscerri.ytdl.core.packages.Python
+import com.deniscerri.ytdl.core.packages.QuickJS
+import com.deniscerri.ytdl.core.stream.StreamGobbler
+import com.deniscerri.ytdl.core.stream.StreamProcessExtractor
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import org.apache.commons.io.FileUtils
+import java.io.File
+import java.io.IOException
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.Volatile
+
+object RuntimeManager {
+    val idProcessMap = Collections.synchronizedMap(HashMap<String, Process>())
+    lateinit var pythonLocation: PackageBase.PackageLocation
+    lateinit var ffmpegLocation: PackageBase.PackageLocation
+    lateinit var aria2Location: PackageBase.PackageLocation
+    lateinit var nodeLocation : PackageBase.PackageLocation
+    lateinit var denoLocation : PackageBase.PackageLocation
+    lateinit var quickJsLocation : PackageBase.PackageLocation
+    var ytdlpPath: File? = null
+
+    @Volatile
+    var initialized = false
+        private set
+
+    private var initLatch = CountDownLatch(1)
+    private val initLock = Any()
+
+    private var updateLatch = CountDownLatch(1)
+    private val updateLock = Any()
+
+    const val BASENAME = "mwyd"
+    const val ytdlpDirName = "yt-dlp"
+    const val ytdlpBin = "yt-dlp"
+
+    private var ENV_LD_LIBRARY_PATH: String? = null
+    private var PATH: String? = null
+    private var ENV_SSL_CERT_FILE: String? = null
+    private var OPEN_SSL_CONF: String? = null
+    private var ENV_PYTHONHOME: String? = null
+    private var TMPDIR: String = ""
+
+    fun init(appContext: Context) {
+        if (initialized) return
+
+        synchronized(initLock) {
+            val baseDir = File(appContext.noBackupFilesDir, BASENAME).apply { if (!exists()) mkdir() }
+
+            val python = Python.getInstance()
+            val ffmpeg = FFmpeg.getInstance()
+            val aria2c = Aria2c.getInstance()
+            val nodeJS = NodeJS.getInstance()
+            val quickJS = QuickJS.getInstance()
+            val deno = Deno.getInstance()
+
+            python.init(appContext)
+            ffmpeg.init(appContext)
+            aria2c.init(appContext)
+            nodeJS.init(appContext)
+            quickJS.init(appContext)
+            deno.init(appContext)
+
+            //find location of libraries either from bundled or downloaded paths
+            pythonLocation = python.location
+            ffmpegLocation = ffmpeg.location
+            aria2Location = aria2c.location
+            nodeLocation = nodeJS.location
+            denoLocation = deno.location
+            quickJsLocation = quickJS.location
+
+            val ytdlpDir = File(baseDir, ytdlpDirName)
+            ytdlpPath = File(ytdlpDir, ytdlpBin)
+            initYTDLP(appContext, ytdlpDir)
+
+            val locations = listOf(
+                pythonLocation,
+                ffmpegLocation,
+                aria2Location,
+                nodeLocation,
+                quickJsLocation,
+                denoLocation,
+            )
+
+            val ldPaths = mutableListOf<String>()
+            locations.forEach {
+                val usrLib = File(it.ldDir, "usr/lib")
+                if (usrLib.exists()) {
+                    ldPaths.add(usrLib.absolutePath)
+                } else if (it.ldDir.exists()) {
+                    ldPaths.add(it.ldDir.absolutePath)
+                }
+            }
+            ldPaths.add(appContext.applicationInfo.nativeLibraryDir)
+            ENV_LD_LIBRARY_PATH = ldPaths.distinct().joinToString(":")
+
+            val binPaths = locations.filter { it.binDir.exists() }.map { it.binDir.absolutePath }.toMutableList()
+            binPaths.add(System.getenv("PATH") ?: "/system/bin")
+            PATH = binPaths.distinct().joinToString(":")
+
+            ENV_SSL_CERT_FILE = if (pythonLocation.isDownloaded) {
+                File(pythonLocation.ldDir.parentFile, "usr/etc/tls/cert.pem").absolutePath
+            } else {
+                pythonLocation.ldDir.absolutePath + "/usr/etc/tls/cert.pem"
+            }
+
+            OPEN_SSL_CONF = ""
+            if (nodeLocation.ldDir.exists()) {
+                OPEN_SSL_CONF = if (nodeLocation.isDownloaded) {
+                    File(nodeLocation.ldDir.parentFile, "usr/etc/tls/openssl.cnf").absolutePath
+                } else {
+                    nodeLocation.ldDir.absolutePath + "/usr/etc/tls/openssl.cnf"
+                }
+            }
+
+            ENV_PYTHONHOME = if (pythonLocation.isDownloaded) {
+                pythonLocation.ldDir.absolutePath + "/usr"
+            } else {
+                pythonLocation.ldDir.absolutePath + "/usr"
+            }
+            TMPDIR = appContext.cacheDir.absolutePath
+
+            initialized = true
+            initLatch.countDown()
+            updateLatch.countDown()
+        }
+    }
+
+    fun reInit(context: Context) {
+        synchronized(initLock) {
+            initialized = false
+            initLatch = CountDownLatch(1)
+            init(context)
+        }
+
+    }
+
+    fun assertInit() {
+        val success = initLatch.await(30, TimeUnit.SECONDS)
+        if (!success || !initialized) {
+            throw IllegalStateException("Instance not initialized")
+        }
+    }
+
+    fun assertNoUpdate() {
+        val completed = updateLatch.await(2, TimeUnit.MINUTES)
+        if (!completed) {
+            throw IllegalStateException("Update timed out or failed to complete")
+        }
+    }
+
+    @Throws(ExecuteException::class)
+    fun initYTDLP(appContext: Context, ytdlpDir: File) {
+        if (!ytdlpDir.exists()) ytdlpDir.mkdirs()
+        val ytdlpBinary = File(ytdlpDir, ytdlpBin)
+        val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(appContext)
+        val lastBundledSize = prefs.getLong("bundled_ytdlp_raw_size", 0L)
+        try {
+            val rawFd = appContext.resources.openRawResourceFd(R.raw.ytdlp)
+            val currentRawLength = rawFd?.length ?: 0L
+            rawFd?.close()
+
+            val needsUpdate = !ytdlpBinary.exists() || ytdlpBinary.length() == 0L || (currentRawLength > 0L && currentRawLength != lastBundledSize)
+            if (needsUpdate) {
+                val inputStream = appContext.resources.openRawResource(R.raw.ytdlp)
+                FileUtils.copyInputStreamToFile(inputStream, ytdlpBinary)
+                if (currentRawLength > 0L) {
+                    prefs.edit().putLong("bundled_ytdlp_raw_size", currentRawLength).apply()
+                }
+            }
+        } catch (e: Exception) {
+            if (!ytdlpBinary.exists() || ytdlpBinary.length() == 0L) {
+                try {
+                    val inputStream = appContext.resources.openRawResource(R.raw.ytdlp)
+                    FileUtils.copyInputStreamToFile(inputStream, ytdlpBinary)
+                } catch (ex: Exception) {
+                    FileUtils.deleteQuietly(ytdlpDir)
+                    throw ExecuteException("failed to initialize", ex)
+                }
+            }
+        }
+    }
+
+    fun destroyProcessById(id: String): Boolean {
+        if (idProcessMap.containsKey(id)) {
+            val p = idProcessMap[id]
+            var alive = true
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                alive = p?.isAlive == true
+            }
+            if (alive && p != null) {
+                val pid = getProcessPid(p)
+                if (pid > 0) {
+                    destroyChildProcesses(pid)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    p.destroyForcibly()
+                } else {
+                    p.destroy()
+                }
+                idProcessMap.remove(id)
+                return true
+            }
+            idProcessMap.remove(id)
+        }
+        return false
+    }
+
+    private fun getProcessPid(p: Process): Int {
+        return try {
+            val field = p.javaClass.getDeclaredField("pid")
+            field.isAccessible = true
+            field.getInt(p)
+        } catch (e: Exception) {
+            -1
+        }
+    }
+
+    private fun destroyChildProcesses(pid: Int) : Boolean {
+        if (pid <= 0) return false
+        return try {
+            val command = "pkill -9 -P $pid; kill -9 -$pid; kill -9 $pid"
+            val processBuilder = ProcessBuilder("/system/bin/sh", "-c", command)
+            val process = processBuilder.start()
+            process.waitFor()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    class CanceledException : Exception()
+
+    fun execute(
+        request: YTDLRequest,
+        processId: String? = null,
+        redirectErrorStream: Boolean = false,
+        usingCacheDir: Boolean = false,
+        callback: ((Float, Long, String) -> Unit)? = null
+    ) : ExecuteResponse {
+        assertInit()
+        assertNoUpdate()
+
+        if (processId != null && idProcessMap.containsKey(processId)) {
+            throw ExecuteException("Process ID already exists")
+        }
+
+        if (ffmpegLocation.isAvailable) {
+            request.addOption("--ffmpeg-location", ffmpegLocation.executable.absolutePath)
+        }
+
+        if (nodeLocation.isAvailable) {
+            request.addOption("--js-runtimes", "node:${nodeLocation.executable.absolutePath}")
+        }
+
+        if (denoLocation.isAvailable) {
+            request.addOption("--js-runtimes", "deno:${denoLocation.executable.absolutePath}")
+        }
+
+        if (quickJsLocation.isAvailable) {
+            request.addOption("--js-runtimes", "quickjs:${quickJsLocation.executable.absolutePath}")
+        }
+
+        if (request.buildCommand().contains("libaria2c.so")) {
+            request.addOption(
+                    "--external-downloader-args",
+                    "aria2c:--ca-certificate=$ENV_SSL_CERT_FILE"
+                )
+        }
+
+        if (!usingCacheDir) {
+            request.addOption("--no-cache-dir")
+        }
+
+        val startTime = System.currentTimeMillis()
+        val fullCommand = mutableListOf<String>(pythonLocation.executable.absolutePath, ytdlpPath!!.absolutePath) + request.buildCommand()
+
+        val processBuilder = ProcessBuilder(fullCommand).redirectErrorStream(redirectErrorStream)
+
+        processBuilder.environment().apply {
+            this["LD_LIBRARY_PATH"] = ENV_LD_LIBRARY_PATH
+            if (OPEN_SSL_CONF != "") {
+                this["OPENSSL_CONF"] = OPEN_SSL_CONF
+            }
+            this["SSL_CERT_FILE"] = ENV_SSL_CERT_FILE
+            this["PATH"] = PATH
+            this["PYTHONHOME"] = ENV_PYTHONHOME
+            this["HOME"] = ENV_PYTHONHOME
+            this["TMPDIR"] = TMPDIR
+        }
+
+        val outBuffer = StringBuffer()
+        val errBuffer = StringBuffer()
+
+        val process = try {
+            processBuilder.start().also {
+                if (processId != null) idProcessMap[processId] = it
+            }
+        } catch (e: IOException) {
+            throw ExecuteException(e)
+        }
+
+        return try {
+            val stdOutProcessor = StreamProcessExtractor(outBuffer, process.inputStream, callback)
+            val stdErrProcessor = StreamGobbler(errBuffer, process.errorStream)
+
+            stdOutProcessor.join()
+            stdErrProcessor.join()
+
+            val exitCode = process.waitFor()
+            val out = outBuffer.toString()
+            val err = errBuffer.toString()
+
+            val successCodes = listOf(
+                0, //Everything is successful
+            )
+
+            if (!successCodes.contains(exitCode)) {
+                // Check if process was manually killed (removed from map)
+                if (processId != null && !idProcessMap.containsKey(processId)) throw CanceledException()
+                throw ExecuteException(err)
+            }
+
+            ExecuteResponse(fullCommand, exitCode, System.currentTimeMillis() - startTime, out, err)
+        } catch (e: InterruptedException) {
+            process.destroy()
+            throw e
+        } finally {
+            if (processId != null) idProcessMap.remove(processId)
+        }
+    }
+
+    @Synchronized
+    @Throws(ExecuteException::class)
+    fun updateYTDL(
+        appContext: Context,
+        updateChannel: UpdateChannel = UpdateChannel.STABLE
+    ): UpdateStatus? {
+        assertInit()
+
+        synchronized(updateLock) {
+            if (updateLatch.count >= 0) {
+                updateLatch = CountDownLatch(1)
+            }
+        }
+
+        return try {
+            YTDLUpdater.update(appContext, updateChannel)
+        } catch (e: IOException) {
+            throw ExecuteException("failed to update youtube-dl", e)
+        } finally {
+            synchronized(updateLock) {
+                updateLatch.countDown()
+            }
+        }
+    }
+
+    fun version(appContext: Context?): String? {
+        return YTDLUpdater.version(appContext)
+    }
+
+    fun versionName(appContext: Context?): String? {
+        return YTDLUpdater.versionName(appContext)
+    }
+
+    enum class UpdateStatus {
+        DONE, ALREADY_UP_TO_DATE
+    }
+
+    open class UpdateChannel(val apiUrl: String) {
+        object STABLE : UpdateChannel("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
+        object NIGHTLY :
+            UpdateChannel("https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest")
+        object MASTER :
+            UpdateChannel("https://api.github.com/repos/yt-dlp/yt-dlp-master-builds/releases/latest")
+
+        companion object {
+            @JvmField
+            val _STABLE: STABLE = STABLE
+
+            @JvmField
+            val _NIGHTLY: NIGHTLY = NIGHTLY
+
+            @JvmField
+            val _MASTER: MASTER = MASTER
+        }
+    }
+
+    @JvmStatic
+    fun getInstance() = this
+}

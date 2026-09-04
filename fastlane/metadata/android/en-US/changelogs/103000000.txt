@@ -1,0 +1,1 @@
+App folder structure configured for MWYD
