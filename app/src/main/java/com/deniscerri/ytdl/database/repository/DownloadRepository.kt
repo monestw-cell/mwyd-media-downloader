@@ -12,6 +12,7 @@ import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.deniscerri.ytdl.App
 import com.deniscerri.ytdl.R
@@ -267,16 +268,23 @@ class DownloadRepository(private val downloadDao: DownloadDao) {
 
         inputData.putBoolean("continue_after_priority_ids", continueAfterPriorityItems)
 
-        val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
+        val workRequestBuilder = OneTimeWorkRequestBuilder<DownloadWorker>()
             .addTag("download")
             .setConstraints(workConstraints.build())
-            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
             .setInputData(inputData.build())
+
+        if (delay == 0L) {
+            workRequestBuilder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        } else {
+            workRequestBuilder.setInitialDelay(delay, TimeUnit.MILLISECONDS)
+        }
+
+        val workRequest = workRequestBuilder.build()
 
         workManager.enqueueUniqueWork(
             System.currentTimeMillis().toString(),
             ExistingWorkPolicy.REPLACE,
-            workRequest.build()
+            workRequest
         )
 
 

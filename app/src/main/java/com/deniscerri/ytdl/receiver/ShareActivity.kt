@@ -130,8 +130,12 @@ class ShareActivity : BaseActivity() {
             val inputQuery = data.extractURL()
             val ai = packageManager.getActivityInfo(componentName, PackageManager.GET_META_DATA)
 
-            val type = intent.getStringExtra("TYPE")
-            val background = intent.getBooleanExtra("BACKGROUND", ai.metaData?.getBoolean("quick_run_background", false) == true)
+            val type = intent.getStringExtra("TYPE") ?: intent.getStringExtra("type")
+            val background = intent.getBooleanExtra("BACKGROUND", false) ||
+                    intent.getBooleanExtra("background", false) ||
+                    intent.getBooleanExtra("quick_download", false) ||
+                    ai.metaData?.getBoolean("quick_run_background", false) == true ||
+                    !sharedPreferences.getBoolean("download_card", true)
 
             val initialResult = downloadViewModel.createEmptyResultItem(inputQuery)
             val downloadType = DownloadType.valueOf(type ?: downloadViewModel.getDownloadType(url = initialResult.url).toString())
@@ -148,27 +152,48 @@ class ShareActivity : BaseActivity() {
                 bundle.putSerializable("type", downloadType)
                 bundle.putBoolean("quickMode", useQuickMode)
                 navController.setGraph(R.navigation.share_nav_graph, bundle)
+
+                // In background, fetch rich formats and update ResultViewModel
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val existingResults = resultViewModel.getAllByURL(inputQuery)
+                    if (existingResults.isNotEmpty() && existingResults.first().formats.isNotEmpty()) {
+                        val cached = existingResults.first()
+                        withContext(Dispatchers.Main) {
+                            downloadCardViewModel.setResultItem(cached)
+                        }
+                    } else {
+                        resultViewModel.updateItemData(initialResult)
+                    }
+                }
             } else {
                 Toast.makeText(this@ShareActivity, "${getString(R.string.downloading)} $inputQuery", Toast.LENGTH_SHORT).show()
-                lifecycleScope.launch(Dispatchers.IO){
+                com.deniscerri.ytdl.App.applicationScope.launch(Dispatchers.IO){
                     val downloadItem = downloadViewModel.createDownloadItemFromResult(
                         result = initialResult,
                         givenType = downloadType)
-                    downloadViewModel.queueDownloads(listOf(downloadItem))
-                }
-                this@ShareActivity.finish()
-            }
-
-            // In background, fetch rich formats and update ResultViewModel
-            lifecycleScope.launch(Dispatchers.IO) {
-                val existingResults = resultViewModel.getAllByURL(inputQuery)
-                if (existingResults.isNotEmpty() && existingResults.first().formats.isNotEmpty()) {
-                    val cached = existingResults.first()
-                    withContext(Dispatchers.Main) {
-                        downloadCardViewModel.setResultItem(cached)
+                    val cuts = intent.getStringExtra("CUTS") ?: intent.getStringExtra("cuts")
+                    if (!cuts.isNullOrBlank()) {
+                        downloadItem.downloadSections = cuts
                     }
-                } else {
-                    resultViewModel.updateItemData(initialResult)
+                    if (intent.getBooleanExtra("SUBS", false) || intent.getBooleanExtra("subs", false)) {
+                        val hasEmbedExtra = intent.hasExtra("EMBED_SUBS") || intent.hasExtra("embed_subs")
+                        downloadItem.videoPreferences.embedSubs = if (hasEmbedExtra) {
+                            intent.getBooleanExtra("EMBED_SUBS", false) || intent.getBooleanExtra("embed_subs", false)
+                        } else {
+                            sharedPreferences.getBoolean("embed_subtitles", false)
+                        }
+                        downloadItem.videoPreferences.writeSubs = true
+                        downloadItem.videoPreferences.writeAutoSubs = false
+                        val subsLang = intent.getStringExtra("SUBS_LANG") ?: intent.getStringExtra("subs_lang")
+                        if (!subsLang.isNullOrBlank()) {
+                            val cleanLang = subsLang.split(",").firstOrNull()?.trim()?.removeSuffix(".*") ?: subsLang.trim()
+                            downloadItem.videoPreferences.subsLanguages = cleanLang
+                        }
+                    }
+                    downloadViewModel.queueDownloads(listOf(downloadItem))
+                    withContext(Dispatchers.Main) {
+                        this@ShareActivity.finish()
+                    }
                 }
             }
         }

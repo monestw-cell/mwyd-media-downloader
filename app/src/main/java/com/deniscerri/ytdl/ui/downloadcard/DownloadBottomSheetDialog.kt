@@ -100,7 +100,7 @@ class DownloadBottomSheetDialog : BottomSheetDialogFragment() {
     private var quickMode: Boolean = false
     private var quickCuts: List<String> = emptyList()
     private var quickSubsEnabled: Boolean = false
-    private var quickSubsLanguages: String = "ar.*,en.*,.*-orig"
+    private var quickSubsLanguages: String = "ar"
     private var quickSelectedAudioFormat: String? = null
     private var quickSelectedAudioLanguage: String? = null
 
@@ -1378,10 +1378,19 @@ class DownloadBottomSheetDialog : BottomSheetDialogFragment() {
 
         subsBtn?.setOnClickListener {
             val availableSubs = result.availableSubtitles.ifEmpty { listOf("ar", "en") }
-            UiUtil.showSubtitleLanguagesDialog(requireActivity(), availableSubs, quickSubsLanguages) { chosenLang ->
-                quickSubsLanguages = chosenLang
+            val currentVal = if (quickSubsLanguages.contains(",")) "" else quickSubsLanguages
+            UiUtil.showSubtitleLanguagesDialog(requireActivity(), availableSubs, currentVal) { chosenLang ->
+                val singleOrClean = chosenLang.split(",").map { it.trim().removeSuffix(".*") }.filter { it.isNotEmpty() }
+                val targetLang = if (singleOrClean.size == 1) {
+                    singleOrClean.first()
+                } else if (singleOrClean.isNotEmpty()) {
+                    singleOrClean.joinToString(",")
+                } else {
+                    "ar"
+                }
+                quickSubsLanguages = targetLang
                 quickSubsEnabled = true
-                subsText?.text = "الترجمة ($chosenLang)"
+                subsText?.text = "الترجمة ($targetLang)"
                 subsBtn.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.mwyd_theme_dark_primaryContainer))
             }
         }
@@ -1474,8 +1483,8 @@ class DownloadBottomSheetDialog : BottomSheetDialogFragment() {
         if (quickSubsEnabled) {
             updated.videoPreferences.embedSubs = true
             updated.videoPreferences.writeSubs = true
-            updated.videoPreferences.writeAutoSubs = true
-            updated.videoPreferences.subsLanguages = quickSubsLanguages.ifEmpty { "all" }
+            updated.videoPreferences.writeAutoSubs = false
+            updated.videoPreferences.subsLanguages = quickSubsLanguages.ifEmpty { "ar" }
         }
 
         if (quickSelectedAudioLanguage != null) {

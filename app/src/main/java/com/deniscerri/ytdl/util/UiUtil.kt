@@ -1140,12 +1140,17 @@ object UiUtil {
 
                 tmp.setOnClickListener {
                     val c = it as Chip
-                    val currentLanguages = editText.text.toString().split(",").filter { f -> f.isNotBlank() }.toMutableList()
+                    val currentText = editText.text.toString().trim()
+                    val isDefaultMulti = currentText == "ar.*,en.*" || currentText == "en.*,.*-orig" || currentText == "ar.*,en.*,.*-orig"
+                    val currentLanguages = if (isDefaultMulti) mutableListOf() else currentText.split(",").map { it.trim() }.filter { f -> f.isNotBlank() }.toMutableList()
                     if(!c.isChecked){
-                        editText.setText(currentLanguages.filter { l -> l != c.tag }.joinToString(","))
+                        editText.setText(currentLanguages.filter { l -> l != c.tag && l != c.tag.toString().removeSuffix(".*") }.joinToString(","))
                         editText.setSelection(editText.text.length)
                     }else{
-                        currentLanguages.add(c.tag.toString())
+                        val cleanTag = c.tag.toString().removeSuffix(".*")
+                        if (!currentLanguages.contains(cleanTag) && !currentLanguages.contains(c.tag.toString())) {
+                            currentLanguages.add(cleanTag)
+                        }
                         editText.setText(currentLanguages.joinToString(","))
                         editText.setSelection(editText.text.length)
                     }

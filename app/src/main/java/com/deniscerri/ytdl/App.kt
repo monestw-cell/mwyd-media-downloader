@@ -75,7 +75,7 @@ class App : Application() {
 
     companion object {
         private const val TAG = "App"
-        private lateinit var applicationScope: CoroutineScope
+        lateinit var applicationScope: CoroutineScope
         lateinit var instance: App
     }
 }

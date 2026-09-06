@@ -301,7 +301,7 @@ class DownloadViewModel(private val application: Application) : AndroidViewModel
 
 
         val preferredAudioFormats = getPreferredAudioFormats(resultItem.formats)
-        val subsLanguages = sharedPreferences.getString("subs_lang", "en.*,.*-orig")!!
+        val subsLanguages = sharedPreferences.getString("subs_lang", "ar.*,en.*")!!
 
         val videoPreferences = VideoPreferences(
             embedSubs,
@@ -461,7 +461,7 @@ class DownloadViewModel(private val application: Application) : AndroidViewModel
         val saveThumb = sharedPreferences.getBoolean("write_thumbnail", false)
         val embedThumb = sharedPreferences.getBoolean("embed_thumbnail", true)
         val cropThumb = sharedPreferences.getBoolean("crop_thumbnail", false)
-        val subsLanguages = sharedPreferences.getString("subs_lang", "en.*,.*-orig")!!
+        val subsLanguages = sharedPreferences.getString("subs_lang", "ar.*,en.*")!!
 
         var customFileNameTemplate = when(historyItem.type) {
             DownloadType.audio -> sharedPreferences.getString("file_name_template_audio", "%(uploader).30B - %(title).170B")!!

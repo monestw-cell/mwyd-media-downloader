@@ -52,4 +52,8 @@ class YTDLRequest {
         commandList.addAll(urls)
         return commandList
     }
+
+    override fun toString(): String {
+        return buildCommand().joinToString(" ")
+    }
 }

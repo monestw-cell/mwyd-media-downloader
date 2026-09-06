@@ -198,11 +198,15 @@ object Extensions {
         return kotlin.runCatching {
             if (!exists()) return 0
             val retriever = MediaMetadataRetriever()
-            retriever.setDataSource(context, Uri.parse(absolutePath))
+            try {
+                retriever.setDataSource(absolutePath)
+            } catch (_: Exception) {
+                retriever.setDataSource(context, Uri.fromFile(this))
+            }
             val duration = retriever.extractMetadata(METADATA_KEY_DURATION)
             retriever.release()
 
-            duration?.toIntOrNull()?.div(1000) ?: 0
+            duration?.toLongOrNull()?.let { (it / 1000).toInt() } ?: 0
         }.getOrElse { 0 }
     }
 

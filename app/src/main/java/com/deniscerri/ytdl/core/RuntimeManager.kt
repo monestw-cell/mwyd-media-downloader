@@ -61,10 +61,43 @@ object RuntimeManager {
     private var ENV_PYTHONHOME: String? = null
     private var TMPDIR: String = ""
 
+    val isFfmpegAvailable: Boolean
+        get() = ::ffmpegLocation.isInitialized && ffmpegLocation.isAvailable
+    val isNodeAvailable: Boolean
+        get() = ::nodeLocation.isInitialized && nodeLocation.isAvailable
+    val isDenoAvailable: Boolean
+        get() = ::denoLocation.isInitialized && denoLocation.isAvailable
+    val isQuickJsAvailable: Boolean
+        get() = ::quickJsLocation.isInitialized && quickJsLocation.isAvailable
+    val isAria2Available: Boolean
+        get() = ::aria2Location.isInitialized && aria2Location.isAvailable
+    val isPythonAvailable: Boolean
+        get() = ::pythonLocation.isInitialized && pythonLocation.isAvailable
+
+    val envLdLibraryPath: String?
+        get() = ENV_LD_LIBRARY_PATH
+
+    fun executeFfmpeg(args: List<String>, timeoutSeconds: Long = 60): Boolean {
+        if (!isFfmpegAvailable) return false
+        val ffmpegBin = ffmpegLocation.executable.absolutePath
+        val pb = ProcessBuilder(listOf(ffmpegBin) + args)
+        pb.redirectErrorStream(true)
+        ENV_LD_LIBRARY_PATH?.let { pb.environment()["LD_LIBRARY_PATH"] = it }
+        PATH?.let { pb.environment()["PATH"] = it }
+        return try {
+            val proc = pb.start()
+            proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+            proc.exitValue() == 0
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun init(appContext: Context) {
         if (initialized) return
 
         synchronized(initLock) {
+            if (initialized) return
             val baseDir = File(appContext.noBackupFilesDir, BASENAME).apply { if (!exists()) mkdir() }
 
             val python = Python.getInstance()
@@ -155,8 +188,14 @@ object RuntimeManager {
 
     }
 
-    fun assertInit() {
-        val success = initLatch.await(30, TimeUnit.SECONDS)
+    fun assertInit(context: Context? = null) {
+        if (!initialized) {
+            val ctx = context ?: runCatching { com.deniscerri.ytdl.App.instance }.getOrNull()
+            if (ctx != null) {
+                init(ctx.applicationContext)
+            }
+        }
+        val success = initLatch.await(60, TimeUnit.SECONDS)
         if (!success || !initialized) {
             throw IllegalStateException("Instance not initialized")
         }
@@ -266,19 +305,19 @@ object RuntimeManager {
             throw ExecuteException("Process ID already exists")
         }
 
-        if (ffmpegLocation.isAvailable) {
+        if (isFfmpegAvailable) {
             request.addOption("--ffmpeg-location", ffmpegLocation.executable.absolutePath)
         }
 
-        if (nodeLocation.isAvailable) {
+        if (isNodeAvailable) {
             request.addOption("--js-runtimes", "node:${nodeLocation.executable.absolutePath}")
         }
 
-        if (denoLocation.isAvailable) {
+        if (isDenoAvailable) {
             request.addOption("--js-runtimes", "deno:${denoLocation.executable.absolutePath}")
         }
 
-        if (quickJsLocation.isAvailable) {
+        if (isQuickJsAvailable) {
             request.addOption("--js-runtimes", "quickjs:${quickJsLocation.executable.absolutePath}")
         }
 
@@ -339,7 +378,8 @@ object RuntimeManager {
             if (!successCodes.contains(exitCode)) {
                 // Check if process was manually killed (removed from map)
                 if (processId != null && !idProcessMap.containsKey(processId)) throw CanceledException()
-                throw ExecuteException(err)
+                val errorMsg = if (err.isNotBlank()) err else out
+                throw ExecuteException(errorMsg)
             }
 
             ExecuteResponse(fullCommand, exitCode, System.currentTimeMillis() - startTime, out, err)

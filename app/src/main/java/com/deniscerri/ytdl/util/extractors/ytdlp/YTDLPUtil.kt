@@ -846,6 +846,10 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
         }
     }
 
+    private fun StringJoiner.hasOption(option: String): Boolean {
+        return this.toString().contains(option)
+    }
+
     @SuppressLint("RestrictedApi")
     fun buildYTDLRequest(downloadItem: DownloadItem) : YTDLRequest {
         var useItemURL = sharedPreferences.getBoolean("use_itemurl_instead_playlisturl", false)
@@ -1043,12 +1047,20 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
                     val sectionSpec = it.split(" ")[0].trim().removePrefix("*")
                     request.addOption("--download-sections", "*$sectionSpec")
                 }
-                if (!request.toString().contains("--force-keyframes-at-cuts")){
+                if (!request.hasOption("--force-keyframes-at-cuts")){
                     request.addOption("--force-keyframes-at-cuts")
+                }
+                if (!request.hasOption("--no-embed-chapters")){
+                    request.addOption("--no-embed-chapters")
+                }
+                if (!request.hasOption("--postprocessor-args") && !request.hasOption("--ppa")){
+                    request.addOption("--postprocessor-args", "Merger+ffmpeg_o:-map_chapters -1")
                 }
 
                 if (downloadItem.downloadSections.split(";").size > 1){
                     filenameTemplate = "%(autonumber)d. $filenameTemplate [%(section_start>%H∶%M∶%S)s]"
+                } else {
+                    filenameTemplate = "$filenameTemplate [%(section_start>%H∶%M∶%S)s]"
                 }
             }
 
@@ -1183,10 +1195,6 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
                     formatSorting.add(0, "abr:${abrSort}")
                 }
 
-                if (downloadItem.downloadSections.isNotBlank()) {
-                    formatSorting.add(0, "proto:https")
-                }
-
                 if(formatSorting.isNotEmpty()) {
                     request.addOption("-S", formatSorting.joinToString(","))
                 }
@@ -1265,7 +1273,7 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
             DownloadType.video -> {
                 val supportedContainers = context.resources.getStringArray(R.array.video_containers)
 
-                if (downloadItem.videoPreferences.addChapters) {
+                if (downloadItem.videoPreferences.addChapters && downloadItem.downloadSections.isBlank()) {
                     if (sharedPreferences.getBoolean("use_sponsorblock", true)){
                         request.addOption("--sponsorblock-mark", "all")
                     }
@@ -1519,25 +1527,27 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
                     formatSorting.add("+abr")
                 }
 
-                if (downloadItem.downloadSections.isNotBlank()) {
-                    formatSorting.add(0, "proto:https")
-                }
-
                 if (formatSorting.isNotEmpty()) {
                     request.addOption("-S", formatSorting.joinToString(","))
                 }
 
                 request.addOption("-f", f.toString().replace("/$".toRegex(), ""))
 
-                if (downloadItem.videoPreferences.writeSubs){
+                val isCut = downloadItem.downloadSections.isNotBlank()
+
+                val isSingleSubLang = downloadItem.videoPreferences.subsLanguages.isNotBlank() &&
+                        !downloadItem.videoPreferences.subsLanguages.contains(",") &&
+                        downloadItem.videoPreferences.subsLanguages != "all"
+
+                if (downloadItem.videoPreferences.writeSubs || (isCut && downloadItem.videoPreferences.embedSubs)){
                     request.addOption("--write-subs")
                 }
 
-                if(downloadItem.videoPreferences.writeAutoSubs){
+                if (downloadItem.videoPreferences.writeAutoSubs && (!isSingleSubLang || !downloadItem.videoPreferences.writeSubs)){
                     request.addOption("--write-auto-subs")
                 }
 
-                if (downloadItem.videoPreferences.embedSubs) {
+                if (!isCut && downloadItem.videoPreferences.embedSubs) {
                     if (sharedPreferences.getBoolean("no_keep_subs", false) && (downloadItem.videoPreferences.writeSubs || downloadItem.videoPreferences.writeAutoSubs)) {
                         request.addOption("--compat-options", "no-keep-subs")
                     }
@@ -1548,8 +1558,25 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
                 if (downloadItem.videoPreferences.embedSubs || downloadItem.videoPreferences.writeSubs || downloadItem.videoPreferences.writeAutoSubs){
                     val subFormat = sharedPreferences.getString("sub_format", "srt")!!.ifBlank { "srt" }
                     request.addOption("--sub-format", "${subFormat}/best")
-                    request.addOption("--convert-subtitles", subFormat)
-                    request.addOption("--sub-langs", downloadItem.videoPreferences.subsLanguages.ifEmpty { "all" })
+                    if (!isCut && downloadItem.videoPreferences.writeSubs && !downloadItem.videoPreferences.embedSubs) {
+                        request.addOption("--convert-subtitles", subFormat)
+                    }
+                    val rawLangs = downloadItem.videoPreferences.subsLanguages
+                        .replace(".*-orig", "")
+                        .replace(",,", ",")
+                        .trim(',', ' ')
+                    val langList = rawLangs.split(",").map { it.trim().removeSuffix(".*") }.filter { it.isNotBlank() }
+                    val cleanSubsLangs = if (langList.size == 1) {
+                        langList[0]
+                    } else if (langList.isNotEmpty()) {
+                        langList.joinToString(",")
+                    } else {
+                        "ar,en"
+                    }
+                    request.addOption("--sub-langs", cleanSubsLangs)
+                    if (!request.hasOption("-i") && !request.hasOption("--ignore-errors")) {
+                        request.addOption("--ignore-errors")
+                    }
                 }
 
                 var copyStream = ""
@@ -1633,19 +1660,19 @@ class YTDLPUtil(private val context: Context, private val commandTemplateDao: Co
             if (sponsorBlockURL.isNotBlank()) request.addOption("--sponsorblock-api", sponsorBlockURL)
         }
 
-        if (RuntimeManager.ffmpegLocation.isAvailable) {
+        if (RuntimeManager.isFfmpegAvailable) {
             request.addOption("--ffmpeg-location", RuntimeManager.ffmpegLocation.executable.absolutePath)
         }
 
-        if (RuntimeManager.nodeLocation.isAvailable) {
+        if (RuntimeManager.isNodeAvailable) {
             request.addOption("--js-runtimes", "node:${RuntimeManager.nodeLocation.executable.absolutePath}")
         }
 
-        if (RuntimeManager.denoLocation.isAvailable) {
+        if (RuntimeManager.isDenoAvailable) {
             request.addOption("--js-runtimes", "deno:${RuntimeManager.denoLocation.executable.absolutePath}")
         }
 
-        if (RuntimeManager.quickJsLocation.isAvailable) {
+        if (RuntimeManager.isQuickJsAvailable) {
             request.addOption("--js-runtimes", "quickjs:${RuntimeManager.quickJsLocation.executable.absolutePath}")
         }
 
